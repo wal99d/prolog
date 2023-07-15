@@ -1,0 +1,2 @@
+# prolog
+Distributed Log Service
