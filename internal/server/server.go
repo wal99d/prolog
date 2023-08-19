@@ -72,7 +72,7 @@ func NewGRPCServer(config *Config, grpcOpts ...grpc.ServerOption) (
 		grpc_ctxtags.UnaryServerInterceptor(),
 		grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
 		grpc_auth.UnaryServerInterceptor(authenticate),
-	)), grpc.StatsHandler(&ocgrpc.ServerHandler{})
+	)), grpc.StatsHandler(&ocgrpc.ServerHandler{}))
 	gsrv := grpc.NewServer(grpcOpts...)
 	srv, err := newgrpcServer(config)
 	if err != nil {

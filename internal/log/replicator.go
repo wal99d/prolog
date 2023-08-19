@@ -22,18 +22,6 @@ type Replicator struct {
 	close   chan struct{}
 }
 
-func (r *Replicator) init() {
-	if r.logger == nil {
-		r.logger = zap.L().Named("replicator")
-	}
-	if r.servers == nil {
-		r.servers = make(map[string]chan struct{})
-	}
-	if r.close == nil {
-		r.close = make(chan struct{})
-	}
-}
-
 func (r *Replicator) Join(name, addr string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -44,20 +32,14 @@ func (r *Replicator) Join(name, addr string) error {
 	}
 
 	if _, ok := r.servers[name]; ok {
-		//already replicating so skip
+		// already replicating so skip
 		return nil
 	}
 	r.servers[name] = make(chan struct{})
-	go r.replicate(addr, r.servers[name])
-	return nil
-}
 
-func (r *Replicator) logError(err error, msg, addr string) {
-	r.logger.Error(
-		msg,
-		zap.String("addr", addr),
-		zap.Error(err),
-	)
+	go r.replicate(addr, r.servers[name])
+
+	return nil
 }
 
 func (r *Replicator) replicate(addr string, leave chan struct{}) {
@@ -67,15 +49,20 @@ func (r *Replicator) replicate(addr string, leave chan struct{}) {
 		return
 	}
 	defer cc.Close()
+
 	client := api.NewLogClient(cc)
+
 	ctx := context.Background()
-	stream, err := client.ConsumeStream(ctx, &api.ConsumeRequest{
-		Offset: 0,
-	})
+	stream, err := client.ConsumeStream(ctx,
+		&api.ConsumeRequest{
+			Offset: 0,
+		},
+	)
 	if err != nil {
 		r.logError(err, "failed to consume", addr)
 		return
 	}
+
 	records := make(chan *api.Record)
 	go func() {
 		for {
@@ -95,9 +82,11 @@ func (r *Replicator) replicate(addr string, leave chan struct{}) {
 		case <-leave:
 			return
 		case record := <-records:
-			_, err := r.LocalServer.Produce(ctx, &api.ProduceRequest{
-				Record: record,
-			})
+			_, err = r.LocalServer.Produce(ctx,
+				&api.ProduceRequest{
+					Record: record,
+				},
+			)
 			if err != nil {
 				r.logError(err, "failed to produce", addr)
 				return
@@ -118,9 +107,22 @@ func (r *Replicator) Leave(name string) error {
 	return nil
 }
 
+func (r *Replicator) init() {
+	if r.logger == nil {
+		r.logger = zap.L().Named("replicator")
+	}
+	if r.servers == nil {
+		r.servers = make(map[string]chan struct{})
+	}
+	if r.close == nil {
+		r.close = make(chan struct{})
+	}
+}
+
 func (r *Replicator) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.init()
 
 	if r.closed {
 		return nil
@@ -128,4 +130,12 @@ func (r *Replicator) Close() error {
 	r.closed = true
 	close(r.close)
 	return nil
+}
+
+func (r *Replicator) logError(err error, msg, addr string) {
+	r.logger.Error(
+		msg,
+		zap.String("addr", addr),
+		zap.Error(err),
+	)
 }
